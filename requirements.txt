@@ -1,0 +1,22 @@
+# Core dependencies for sermon transcription and summarization
+openai-whisper>=20250625
+langchain-openai>=0.3.30
+langgraph>=0.6.5
+langchain-core>=0.3.74
+
+# Environment and utilities
+python-dotenv>=1.0.0
+
+# ML/AI dependencies (automatically installed with whisper, but listed for clarity)
+torch>=2.8.0
+numpy>=2.2.6
+tqdm>=4.67.1
+
+# Development and testing dependencies (optional)
+pytest>=7.0.0
+
+# Note: FFmpeg is required but must be installed separately as a system dependency
+# Download from: https://ffmpeg.org/download.html
+# Windows: Add to PATH or use chocolatey/winget: choco install ffmpeg
+# macOS: brew install ffmpeg
+# Linux: apt install ffmpeg / yum install ffmpeg
