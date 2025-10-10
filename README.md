@@ -21,10 +21,6 @@ A LangGraph-based AI agent that transcribes and summarizes sermon video recordin
 ## Installation
 
 1. **Clone the repository**:
-   ```bash
-   cd C:\Users\wyatt\Documents\GitHub\Thrive\Sermon_Summarization_Agent
-   ```
-
 2. **Create a virtual environment**:
    ```bash
    python -m venv venv
