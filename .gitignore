@@ -213,3 +213,6 @@ batch_summaries.json
 *summary.txt
 *transcription.txt
 *transcription_segments.json
+*modified_messages/
+*api_content/
+*update_report_*.txt

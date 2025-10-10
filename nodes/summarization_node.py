@@ -102,7 +102,7 @@ def summarize_sermon(state: AgentState):
     summary_text = response.content.strip()
     
     # Ensure it's a single paragraph (remove any internal line breaks)
-    summary_text = " ".join(summary_text.split("\n"))
+    summary_text = " ".join(summary_text.split("\n")).replace("’", "'")
     
     # Write outputs
     output_txt = Path("summary.txt")
