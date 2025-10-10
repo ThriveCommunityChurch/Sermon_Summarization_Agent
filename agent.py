@@ -2,6 +2,7 @@
 import os
 import json
 import datetime
+import time
 from pathlib import Path
 from typing import Dict, Any, List
 from dotenv import load_dotenv
@@ -15,6 +16,7 @@ from classes.agent_state import AgentState
 from nodes.transcription_node import transcribe_audio
 from nodes.summarization_node import summarize_sermon
 from nodes.tagging_node import tag_sermon
+from utils.api_retry import call_llm_with_retry
 
 # Load environment variables from .env file
 load_dotenv()
@@ -42,9 +44,9 @@ def should_continue(state):
 
 
 def call_model(state):
-    """Call the LLM model to determine next action."""
+    """Call the LLM model to determine next action with retry logic."""
     messages = state["messages"]
-    response = model.invoke(messages)
+    response = call_llm_with_retry(model, messages, max_retries=3)
     return {"messages": [response]}
 
 
@@ -98,6 +100,76 @@ def find_audio_files(directory: Path) -> List[Path]:
     # Sort by modification time (oldest first)
     audio_files.sort(key=lambda p: p.stat().st_mtime)
     return audio_files
+
+
+def is_file_already_processed(file_stem: str, outputs_dir: Path = Path("batch_outputs")) -> bool:
+    """
+    Check if a file has already been successfully processed.
+
+    Args:
+        file_stem: The filename without extension (e.g., "2025-01-05-Recording")
+        outputs_dir: The batch outputs directory
+
+    Returns:
+        True if the file has been successfully processed, False otherwise
+    """
+    file_output_dir = outputs_dir / file_stem
+
+    # Check if output directory exists
+    if not file_output_dir.exists():
+        return False
+
+    # Check for required files
+    transcription_path = file_output_dir / "transcription.txt"
+    summary_json_path = file_output_dir / "summary.json"
+
+    # Transcription must exist and be non-empty
+    if not transcription_path.exists():
+        return False
+
+    try:
+        transcription_text = transcription_path.read_text(encoding='utf-8').strip()
+        if not transcription_text:
+            return False
+    except Exception:
+        return False
+
+    # Summary JSON must exist and be valid
+    if not summary_json_path.exists():
+        return False
+
+    try:
+        with open(summary_json_path, 'r', encoding='utf-8') as f:
+            summary_data = json.load(f)
+
+        # Check if it has tags array (indicates successful completion of all steps)
+        # OR if it explicitly has status: success
+        has_tags = "tags" in summary_data and isinstance(summary_data["tags"], list)
+        has_success_status = summary_data.get("status") == "success"
+
+        if not (has_tags or has_success_status):
+            return False
+
+    except (json.JSONDecodeError, Exception):
+        return False
+
+    # All checks passed - file was successfully processed
+    return True
+
+
+def clear_batch_outputs(outputs_dir: Path = Path("batch_outputs")):
+    """
+    Clear the batch outputs directory for a clean run.
+
+    Args:
+        outputs_dir: The batch outputs directory to clear
+    """
+    if outputs_dir.exists():
+        import shutil
+        print(f"⚠️  Clearing {outputs_dir}/ directory (use --resume to preserve existing results)")
+        shutil.rmtree(outputs_dir)
+        print(f"   Removed {outputs_dir}/ directory")
+    outputs_dir.mkdir(exist_ok=True)
 
 
 def process_single_file(file_path: str, output_dir: Path = None) -> Dict[str, Any]:
@@ -181,12 +253,14 @@ def process_single_file(file_path: str, output_dir: Path = None) -> Dict[str, An
         os.chdir(original_dir)
 
 
-def process_batch(batch_dir: str) -> None:
+def process_batch(batch_dir: str, resume: bool = False) -> None:
     """
     Process all audio files in a directory in batch mode.
 
     Args:
         batch_dir: Path to directory containing audio files
+        resume: If True, skip files that have already been successfully processed.
+                If False, clear the batch_outputs directory before starting.
     """
     batch_path = Path(batch_dir)
 
@@ -206,15 +280,48 @@ def process_batch(batch_dir: str) -> None:
         print("   Supported formats: MP3, MP4, WAV, M4A, MOV")
         return
 
-    print("\n" + "="*80)
-    print("SERMON SUMMARIZATION AGENT - BATCH MODE")
-    print("="*80)
-    print(f"\nProcessing directory: {batch_dir}")
-    print(f"Found {len(audio_files)} audio file(s) to process\n")
-
     # Create outputs directory
     outputs_dir = Path("batch_outputs")
-    outputs_dir.mkdir(exist_ok=True)
+
+    # Handle resume vs clean run
+    if resume:
+        outputs_dir.mkdir(exist_ok=True)
+        print("\n" + "="*80)
+        print("SERMON SUMMARIZATION AGENT - BATCH MODE (RESUME)")
+        print("="*80)
+        print(f"\n✓ Resume mode enabled - skipping already processed files")
+
+        # Check which files are already processed
+        already_processed = []
+        files_to_process = []
+
+        for audio_file in audio_files:
+            file_stem = audio_file.stem
+            if is_file_already_processed(file_stem, outputs_dir):
+                already_processed.append(audio_file)
+            else:
+                files_to_process.append(audio_file)
+
+        print(f"\nProcessing directory: {batch_dir}")
+        print(f"Found {len(audio_files)} total audio file(s)")
+        print(f"  ✓ Already processed: {len(already_processed)}")
+        print(f"  → To process: {len(files_to_process)}")
+
+        if not files_to_process:
+            print("\n🎉 All files have already been processed!")
+            return
+
+        # Update audio_files to only include files that need processing
+        audio_files = files_to_process
+
+    else:
+        # Clean run - clear outputs directory
+        clear_batch_outputs(outputs_dir)
+        print("\n" + "="*80)
+        print("SERMON SUMMARIZATION AGENT - BATCH MODE")
+        print("="*80)
+        print(f"\nProcessing directory: {batch_dir}")
+        print(f"Found {len(audio_files)} audio file(s) to process\n")
 
     # Start timing
     batch_start_time = datetime.datetime.now()
@@ -267,6 +374,10 @@ def process_batch(batch_dir: str) -> None:
             print(f"   Error: {result.get('error', 'Unknown error')}")
 
         print(f"\nProgress: {idx}/{len(audio_files)} files completed ({idx/len(audio_files)*100:.1f}%)")
+
+        # Add a small delay between files to avoid rate limiting (except for last file)
+        if idx < len(audio_files):
+            time.sleep(2)  # 2 second delay between files
 
     # End timing
     batch_end_time = datetime.datetime.now()
@@ -335,12 +446,24 @@ def main():
         help="Path to directory containing multiple sermon files for batch processing"
     )
 
+    # Add resume flag for batch processing
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume batch processing by skipping already processed files (only works with --batch-dir)"
+    )
+
     args = parser.parse_args()
 
     # Handle batch mode
     if args.batch_dir:
-        process_batch(args.batch_dir)
+        process_batch(args.batch_dir, resume=args.resume)
         return
+
+    # Warn if --resume is used without --batch-dir
+    if args.resume and not args.batch_dir:
+        print("Warning: --resume flag only works with --batch-dir. Ignoring.")
+        print()
 
     # Handle single file mode
     if args.file:

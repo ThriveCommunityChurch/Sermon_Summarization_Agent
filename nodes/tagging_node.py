@@ -15,6 +15,7 @@ from langchain_core.tools import tool
 
 from classes.agent_state import AgentState
 from utils.tag_parser import load_tags, format_tags_for_prompt
+from utils.api_retry import call_llm_with_retry
 
 
 def _load_summary_json() -> Dict[str, Any]:
@@ -128,12 +129,16 @@ def _classify_with_llm(summary_text: str, available_tags: List[str], transcripti
         "transcript to ensure comprehensive coverage of all important topics discussed."
     )
     
-    # Generate the classification
+    # Generate the classification with retry logic
     print("Analyzing sermon content (summary + transcript) and applying tags with GPT-4o-mini...")
-    response = llm.invoke([
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ])
+    response = call_llm_with_retry(
+        llm,
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        max_retries=3
+    )
     
     # Parse the response
     response_text = response.content.strip()

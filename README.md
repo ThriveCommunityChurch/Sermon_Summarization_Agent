@@ -88,8 +88,30 @@ python agent.py
 
 - `--file`, `-f`: Path to a single sermon audio/video file (MP4, MP3, WAV, M4A, MOV)
 - `--batch-dir`, `-b`: Path to directory containing multiple sermon files for batch processing
+- `--resume`: Skip files that have already been successfully processed (only works with `--batch-dir`)
 
 > **Note**: `--file` and `--batch-dir` are mutually exclusive. Use one or the other.
+
+### Checkpoint-Based Resumption
+
+For large batches, use the `--resume` flag to enable checkpoint-based resumption:
+
+```bash
+# Resume an interrupted batch
+python agent.py --batch-dir "G:\Thrive\Sermon Videos\Audio Files" --resume
+```
+
+**Benefits:**
+- ✅ Skip files that have already been successfully processed
+- ✅ Safely interrupt and resume large batch jobs
+- ✅ Automatically retry failed files while preserving successful ones
+- ✅ Perfect for processing hundreds of files across multiple sessions
+
+**Without `--resume` (default):**
+- Clears the `batch_outputs/` directory before starting
+- Useful for testing prompt changes or configuration adjustments
+
+See [CHECKPOINT_GUIDE.md](CHECKPOINT_GUIDE.md) for detailed usage and examples.
 
 ## Output
 

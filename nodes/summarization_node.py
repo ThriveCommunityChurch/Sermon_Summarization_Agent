@@ -7,6 +7,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 
 from classes.agent_state import AgentState
+from utils.api_retry import call_llm_with_retry
 
 
 def _load_transcription() -> str:
@@ -87,12 +88,16 @@ def summarize_sermon(state: AgentState):
         f"that captures its core message and purpose:\n\n{transcription}"
     )
     
-    # Generate the summary
+    # Generate the summary with retry logic
     print("Generating sermon summary with GPT-4o-mini...")
-    response = llm.invoke([
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ])
+    response = call_llm_with_retry(
+        llm,
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        max_retries=3
+    )
     
     summary_text = response.content.strip()
     
