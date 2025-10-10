@@ -549,9 +549,9 @@ def update_message_via_api(
         url = f"{API_BASE_URL}/series/message/{message_id}"
         payload = {"Message": updated_message}
 
-        # COMMENTED OUT FOR TESTING - Uncomment when ready to make actual API calls
-        # response = session.put(url, json=payload, timeout=REQUEST_TIMEOUT)
-        # response.raise_for_status()
+        # send request to api to update messages
+        response = session.put(url, json=payload, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
 
         logger.info(f"✓ [SKIPPED API CALL] Would update message {message_id} (API call commented out for testing)")
         return True
