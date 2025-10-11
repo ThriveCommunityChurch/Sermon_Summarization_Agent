@@ -6,7 +6,7 @@ This script automates the process of updating sermon messages with summaries and
 with AI-generated summaries and tags from the batch_outputs directory.
 
 Usage:
-    python update_sermon_summaries.py [--dry-run] [--resume] [--folder FOLDER] [--use-cached-api] [--api-url URL]
+    python update_sermon_summaries.py [--dry-run] [--resume] [--folder FOLDER] [--use-cached-api] [--api-url URL] [--force-update]
 
 Options:
     --api-url         Base URL for the API (example: http://localhost:8080/api/sermons)
@@ -14,6 +14,7 @@ Options:
     --resume          Resume from previous run (skip already processed messages)
     --folder          Process only a single folder (e.g., '2020-01-05-Recording' or full path)
     --use-cached-api  Use cached API data instead of fetching from server (faster for testing)
+    --force-update    Update all messages even if they already have summaries/tags (overwrites existing data)
 """
 
 import os
@@ -33,6 +34,14 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 # ============================================================================
+# CUSTOM EXCEPTIONS
+# ============================================================================
+
+class RateLimitException(Exception):
+    """Raised when API returns 429 (Too Many Requests) status code."""
+    pass
+
+# ============================================================================
 # CONFIGURATION
 # ============================================================================
 
@@ -49,7 +58,7 @@ LOG_FILE = Path(__file__).parent / "update_sermon_summaries.log"
 REQUEST_TIMEOUT = 30  # seconds
 RETRY_ATTEMPTS = 3
 BACKOFF_FACTOR = 1  # seconds between retries
-DELAY_BETWEEN_REQUESTS = 0.5  # seconds
+DELAY_BETWEEN_REQUESTS = 5 # seconds
 
 # ============================================================================
 # LOGGING SETUP
@@ -391,22 +400,30 @@ def extract_audio_filename(audio_url: str) -> Optional[str]:
 
 def match_summaries_to_messages(
     summaries_by_date: Dict[str, Dict],
-    messages_by_id: Dict[str, Dict]
-) -> Tuple[List[Dict], List[str], List[str]]:
+    messages_by_id: Dict[str, Dict],
+    force_update: bool = False
+) -> Tuple[List[Dict], List[str], List[str], List[str]]:
     """
     Match summaries to messages by date, with fallback to AudioUrl filename.
 
     Matching strategy:
     1. Primary: Match by date (handles most cases)
     2. Fallback: Match by AudioUrl filename (handles mislabeled dates)
+    3. Skip messages that already have summaries/tags (unless force_update=True)
+
+    Args:
+        summaries_by_date: Dictionary of summaries indexed by date
+        messages_by_id: Dictionary of messages indexed by MessageId
+        force_update: If True, update all messages even if they have existing summaries/tags
 
     Returns:
-        Tuple of (matched_updates, unmatched_summaries, unmatched_messages)
+        Tuple of (matched_updates, unmatched_summaries, unmatched_messages, skipped_messages)
     """
     logger.info("Matching summaries to messages...")
 
     matched_updates = []
     unmatched_summaries = []
+    skipped_messages = []
     messages_by_date = {}
     messages_by_audio_filename = {}
 
@@ -451,37 +468,57 @@ def match_summaries_to_messages(
             match_method = "audio_filename"
 
         if message:
-            matched_updates.append({
-                "message_id": message["MessageId"],
-                "date": date_str,
-                "series_name": message.get("_SeriesName"),
-                "title": message.get("Title"),
-                "summary": summary_data["summary"],
-                "tags": summary_data["tags"],
-                "original_message": message
-            })
+            # Check if message already has summary/tags (unless force_update is True)
+            existing_summary = message.get("Summary")
+            existing_tags = message.get("Tags", [])
+            has_existing_data = (existing_summary and existing_summary.strip()) or (existing_tags and len(existing_tags) > 0)
 
-            if match_method == "date":
-                logger.info(f"✓ Matched by date: {date_str} - {message.get('Title')}")
+            if has_existing_data and not force_update:
+                # Skip this message - it already has data
+                skipped_messages.append(f"{date_str} - {message.get('Title')}")
+                logger.info(f"⊘ Skipped (already has data): {date_str} - {message.get('Title')} (use --force-update to overwrite)")
             else:
-                logger.info(f"✓ Matched by audio filename: {folder_name} - {message.get('Title')} (date mismatch: folder={date_str}, message={message.get('Date', 'N/A')[:10]})")
+                # Add to matched updates
+                matched_updates.append({
+                    "message_id": message["MessageId"],
+                    "date": date_str,
+                    "series_name": message.get("_SeriesName"),
+                    "title": message.get("Title"),
+                    "summary": summary_data["summary"],
+                    "tags": summary_data["tags"],
+                    "original_message": message
+                })
+
+                if match_method == "date":
+                    logger.info(f"✓ Matched by date: {date_str} - {message.get('Title')}")
+                else:
+                    logger.info(f"✓ Matched by audio filename: {folder_name} - {message.get('Title')} (date mismatch: folder={date_str}, message={message.get('Date', 'N/A')[:10]})")
         else:
             unmatched_summaries.append(date_str)
             logger.warning(f"✗ No message found for: {date_str} ({folder_name})")
 
     # Find messages without summaries
     matched_message_ids = {update["message_id"] for update in matched_updates}
+    skipped_message_ids = set()
+
+    # Extract message IDs from skipped messages (format: "YYYY-MM-DD - Title")
+    for msg_id, msg in messages_by_id.items():
+        msg_str = f"{msg.get('Date', 'N/A')[:10]} - {msg.get('Title')}"
+        if msg_str in skipped_messages:
+            skipped_message_ids.add(msg_id)
+
     unmatched_messages = [
         f"{msg.get('Date', 'N/A')[:10]} - {msg.get('Title')}"
         for msg_id, msg in messages_by_id.items()
-        if msg_id not in matched_message_ids
+        if msg_id not in matched_message_ids and msg_id not in skipped_message_ids
     ]
 
     logger.info(f"Matching complete: {len(matched_updates)} matched, "
+                f"{len(skipped_messages)} skipped (already have data), "
                 f"{len(unmatched_summaries)} unmatched summaries, "
                 f"{len(unmatched_messages)} messages without summaries")
 
-    return matched_updates, unmatched_summaries, unmatched_messages
+    return matched_updates, unmatched_summaries, unmatched_messages, skipped_messages
 
 def create_updated_message(original_message: Dict, summary: str, tags: List[str]) -> Dict:
     """
@@ -540,6 +577,9 @@ def update_message_via_api(
 
     Returns:
         True if successful, False otherwise
+
+    Raises:
+        RateLimitException: If API returns 429 (Too Many Requests)
     """
     if dry_run:
         logger.info(f"[DRY RUN] Would update message {message_id}")
@@ -551,14 +591,23 @@ def update_message_via_api(
 
         # send request to api to update messages
         response = session.put(url, json=payload, timeout=REQUEST_TIMEOUT)
+
+        # Check for rate limiting before raising for other status codes
+        if response.status_code == 429:
+            logger.error(f"✗ Rate limit exceeded (429) when updating message {message_id}")
+            raise RateLimitException("API rate limit exceeded (429 Too Many Requests)")
+
         response.raise_for_status()
 
-        logger.info(f"✓ [SKIPPED API CALL] Would update message {message_id} (API call commented out for testing)")
+        logger.info(f"Updated message {message_id}")
         return True
 
+    except RateLimitException:
+        # Re-raise rate limit exceptions to be handled by caller
+        raise
     except requests.exceptions.RequestException as e:
         logger.error(f"✗ Failed to update message {message_id}: {e}")
-        if hasattr(e.response, 'text'):
+        if hasattr(e, 'response') and hasattr(e.response, 'text'):
             logger.error(f"  Response: {e.response.text}")
         return False
 
@@ -584,44 +633,62 @@ def update_all_messages(
     if resume:
         logger.info(f"Resuming: {successful_count} already processed, {failed_count} previously failed")
 
-    for idx, update in enumerate(matched_updates, 1):
-        message_id = update["message_id"]
+    try:
+        for idx, update in enumerate(matched_updates, 1):
+            message_id = update["message_id"]
 
-        # Skip if already processed
-        if resume and message_id in progress["processed_message_ids"]:
-            logger.info(f"[{idx}/{len(matched_updates)}] Skipping already processed: {message_id}")
-            continue
+            # Skip if already processed
+            if resume and message_id in progress["processed_message_ids"]:
+                logger.info(f"[{idx}/{len(matched_updates)}] Skipping already processed: {message_id}")
+                continue
 
-        logger.info(f"[{idx}/{len(matched_updates)}] Updating: {update['date']} - {update['title']}")
+            logger.info(f"[{idx}/{len(matched_updates)}] Updating: {update['date']} - {update['title']}")
 
-        updated_message = create_updated_message(
-            update["original_message"],
-            update["summary"],
-            update["tags"]
-        )
+            updated_message = create_updated_message(
+                update["original_message"],
+                update["summary"],
+                update["tags"]
+            )
 
-        success = update_message_via_api(session, message_id, updated_message, dry_run)
+            success = update_message_via_api(session, message_id, updated_message, dry_run)
 
-        if success:
-            successful_count += 1
+            if success:
+                successful_count += 1
+                if not dry_run:
+                    progress["processed_message_ids"].append(message_id)
+                    # Remove from failed list if it was there
+                    if message_id in progress["failed_message_ids"]:
+                        progress["failed_message_ids"].remove(message_id)
+            else:
+                failed_count += 1
+                failed_message_ids.append(message_id)
+                if not dry_run:
+                    progress["failed_message_ids"].append(message_id)
+
+            # Save progress after each update
             if not dry_run:
-                progress["processed_message_ids"].append(message_id)
-                # Remove from failed list if it was there
-                if message_id in progress["failed_message_ids"]:
-                    progress["failed_message_ids"].remove(message_id)
-        else:
-            failed_count += 1
-            failed_message_ids.append(message_id)
-            if not dry_run:
-                progress["failed_message_ids"].append(message_id)
+                save_progress(progress)
 
-        # Save progress after each update
+            # Delay between requests
+            if not dry_run:
+                time.sleep(DELAY_BETWEEN_REQUESTS)
+
+    except RateLimitException as e:
+        # Rate limit hit - save progress and exit gracefully
+        logger.warning("\n" + "=" * 80)
+        logger.warning("RATE LIMIT EXCEEDED")
+        logger.warning("=" * 80)
+        logger.warning(f"API rate limit hit after processing {successful_count} messages")
+        logger.warning("Progress has been saved. Use --resume to continue from where you left off.")
+        logger.warning("Consider increasing DELAY_BETWEEN_REQUESTS in the script configuration.")
+        logger.warning("=" * 80)
+
+        # Save final progress
         if not dry_run:
             save_progress(progress)
 
-        # Delay between requests
-        if not dry_run:
-            time.sleep(DELAY_BETWEEN_REQUESTS)
+        # Re-raise to be handled by main
+        raise
 
     return successful_count, failed_count, failed_message_ids
 
@@ -633,6 +700,7 @@ def generate_summary_report(
     matched_updates: List[Dict],
     unmatched_summaries: List[str],
     unmatched_messages: List[str],
+    skipped_messages: List[str],
     successful_count: int,
     failed_count: int,
     failed_message_ids: List[str],
@@ -646,8 +714,9 @@ def generate_summary_report(
         f"Mode: {'DRY RUN' if dry_run else 'LIVE UPDATE'}",
         "",
         "MATCHING RESULTS:",
-        f"  Total summaries processed: {len(matched_updates) + len(unmatched_summaries)}",
+        f"  Total summaries processed: {len(matched_updates) + len(skipped_messages) + len(unmatched_summaries)}",
         f"  Successful matches: {len(matched_updates)}",
+        f"  Skipped (already have data): {len(skipped_messages)}",
         f"  Unmatched summaries: {len(unmatched_summaries)}",
         f"  Messages without summaries: {len(unmatched_messages)}",
         "",
@@ -656,6 +725,14 @@ def generate_summary_report(
         f"  Failed updates: {failed_count}",
         ""
     ]
+
+    if skipped_messages:
+        report.append("SKIPPED MESSAGES (already have summaries/tags - use --force-update to overwrite):")
+        for msg in sorted(skipped_messages)[:10]:  # Show first 10
+            report.append(f"  - {msg}")
+        if len(skipped_messages) > 10:
+            report.append(f"  ... and {len(skipped_messages) - 10} more")
+        report.append("")
 
     if unmatched_summaries:
         report.append("UNMATCHED SUMMARIES (no corresponding message found):")
@@ -722,6 +799,11 @@ def main():
         type=str,
         help="Base URL for the API (example: http://localhost:8080/api/sermons)"
     )
+    parser.add_argument(
+        "--force-update",
+        action="store_true",
+        help="Update all messages even if they already have summaries/tags (overwrites existing data)"
+    )
     args = parser.parse_args()
 
     # Set API_BASE_URL from command-line argument or .env file
@@ -743,6 +825,7 @@ def main():
     logger.info("=" * 80)
     logger.info(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE UPDATE'}")
     logger.info(f"Resume: {args.resume}")
+    logger.info(f"Force update: {args.force_update}")
     logger.info(f"Use cached API data: {args.use_cached_api}")
     logger.info(f"API Base URL: {API_BASE_URL}")
     logger.info(f"Batch outputs directory: {BATCH_OUTPUTS_DIR}")
@@ -785,9 +868,10 @@ def main():
         logger.info("\n" + "-" * 80)
         logger.info("STEP 3: Matching summaries to messages")
         logger.info("-" * 80)
-        matched_updates, unmatched_summaries, unmatched_messages = match_summaries_to_messages(
+        matched_updates, unmatched_summaries, unmatched_messages, skipped_messages = match_summaries_to_messages(
             summaries_by_date,
-            messages_by_id
+            messages_by_id,
+            force_update=args.force_update
         )
 
         # Step 4: Save modified messages locally
@@ -815,6 +899,7 @@ def main():
             matched_updates,
             unmatched_summaries,
             unmatched_messages,
+            skipped_messages,
             successful_count,
             failed_count,
             failed_message_ids,
@@ -823,6 +908,11 @@ def main():
 
         logger.info("\n✓ Script completed successfully!")
 
+    except RateLimitException:
+        logger.warning("\n\n✗ Script stopped due to API rate limiting")
+        logger.info("Progress has been saved. Use --resume to continue from where you left off.")
+        logger.info("Consider increasing DELAY_BETWEEN_REQUESTS in the script configuration.")
+        return 1
     except KeyboardInterrupt:
         logger.warning("\n\n✗ Script interrupted by user")
         logger.info("Progress has been saved. Use --resume to continue.")
