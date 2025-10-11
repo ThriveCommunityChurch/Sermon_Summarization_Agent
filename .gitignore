@@ -216,3 +216,4 @@ batch_summaries.json
 *modified_messages/
 *api_content/
 *update_report_*.txt
+*update_progress.json
