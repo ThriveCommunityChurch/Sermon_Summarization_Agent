@@ -16,6 +16,7 @@ from langchain_core.tools import tool
 from classes.agent_state import AgentState
 from utils.tag_parser import load_tags, format_tags_for_prompt
 from utils.api_retry import call_llm_with_retry
+from utils.token_counter import count_messages_tokens, get_global_tracker
 
 
 def _load_summary_json() -> Dict[str, Any]:
@@ -67,7 +68,7 @@ def _load_transcription() -> str:
     return txt_path.read_text(encoding="utf-8").strip()
 
 
-def _classify_with_llm(summary_text: str, available_tags: List[str], transcription: str) -> List[str]:
+def _classify_with_llm(summary_text: str, available_tags: List[str], transcription: str) -> (List[str], int):
     """
     Use GPT-4o-mini to classify the sermon and select relevant tags.
 
@@ -131,18 +132,29 @@ def _classify_with_llm(summary_text: str, available_tags: List[str], transcripti
     
     # Generate the classification with retry logic
     print("Analyzing sermon content (summary + transcript) and applying tags with GPT-4o-mini...")
+
+    # Count input tokens
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+    input_tokens = count_messages_tokens(messages)
+
     response = call_llm_with_retry(
         llm,
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
+        messages,
         max_retries=3
     )
-    
+
     # Parse the response
     response_text = response.content.strip()
-    
+
+    # Count output tokens
+    output_tokens = count_messages_tokens([{"role": "assistant", "content": response_text}])
+    total_tokens = input_tokens + output_tokens
+
+    print(f"Tagging tokens used: {total_tokens} (input: {input_tokens}, output: {output_tokens})")
+
     # Remove markdown code blocks if present
     if response_text.startswith("```"):
         # Remove ```json or ``` at start and ``` at end
@@ -152,31 +164,31 @@ def _classify_with_llm(summary_text: str, available_tags: List[str], transcripti
         if lines[-1].strip() == "```":
             lines = lines[:-1]
         response_text = "\n".join(lines).strip()
-    
+
     try:
         selected_tags = json.loads(response_text)
-        
+
         if not isinstance(selected_tags, list):
             print(f"Warning: LLM returned non-list response: {response_text}")
-            return []
-        
+            return [], input_tokens, output_tokens
+
         # Validate that all tags are in the available list
         valid_tags = [tag for tag in selected_tags if tag in available_tags]
-        
+
         if len(valid_tags) != len(selected_tags):
             invalid_tags = [tag for tag in selected_tags if tag not in available_tags]
             print(f"Warning: LLM returned invalid tags (ignored): {invalid_tags}")
-        
-        return valid_tags
-        
+
+        return valid_tags, input_tokens, output_tokens
+
     except json.JSONDecodeError as e:
         print(f"Warning: Failed to parse LLM response as JSON: {response_text}")
         print(f"Error: {e}")
-        return []
+        return [], input_tokens, output_tokens
 
 
 @tool
-def tag_sermon(state: AgentState):
+def tag_sermon(state: dict | None = None):
     """
     Apply semantic tags to the sermon summary based on content analysis.
 
@@ -223,29 +235,35 @@ def tag_sermon(state: AgentState):
         transcription = ""  # Ensure it's an empty string, not None
 
     # Classify and select tags using LLM with hybrid approach
-    selected_tags = _classify_with_llm(summary_text, available_tags, transcription)
-    
+    selected_tags, input_tokens, output_tokens = _classify_with_llm(summary_text, available_tags, transcription)
+
     if not selected_tags:
         print("Warning: No tags were selected for this sermon")
-    
-    # Update summary.json with tags
+
+    # Track tagging tokens with input/output breakdown
+    tracker = get_global_tracker()
+    tracker.add_tagging_tokens(input_tokens, output_tokens)
+
+    # Update summary.json with tags and token information
     summary_data["tags"] = selected_tags
-    
+    summary_data.update(tracker.to_dict())
+
     output_json = Path("summary.json")
     output_json.write_text(
         json.dumps(summary_data, ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
-    
+
     print(f"Applied {len(selected_tags)} tags: {', '.join(selected_tags)}")
     print(f"Updated summary.json with tags")
-    
+    print(f"Total tokens used: {tracker.get_total_tokens()}")
+
     # Return result
     result = {
         "tags": selected_tags,
         "tags_count": len(selected_tags),
         "summary_path": str(output_json.resolve()),
     }
-    
+
     return json.dumps(result)
 

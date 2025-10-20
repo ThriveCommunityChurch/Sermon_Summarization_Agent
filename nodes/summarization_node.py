@@ -8,6 +8,7 @@ from langchain_core.tools import tool
 
 from classes.agent_state import AgentState
 from utils.api_retry import call_llm_with_retry
+from utils.token_counter import count_messages_tokens, get_global_tracker
 
 
 def _load_transcription() -> str:
@@ -26,7 +27,7 @@ def _load_transcription() -> str:
 
 
 @tool
-def summarize_sermon(state: AgentState):
+def summarize_sermon(state: dict | None = None):
     """
     Generate a single-paragraph, end-user-friendly summary of the sermon. 
     
@@ -65,7 +66,7 @@ def summarize_sermon(state: AgentState):
         "- DO NOT mention the church name, organization name, or pastor's name\n"
         "- DO NOT cite specific passage references directly (e.g., 'Matthew 2:1-12') unless the entire sermon is an exposition of a single passage\n"
         "- Vary your opening approach—avoid using the same opening verb or structure repeatedly. Use diverse, engaging starts that feel natural and specific to each sermon's unique message"
-        "- Use creative phrases to avoid repetitiveness. Never use phrases like \"you'll discover\", \"is a journey trough...\", \"By the end you'll..\", \"this message invites you...\", \"You'll rediscover...\". Assume the listener is reading many of these at a time and we want to avoid repeating phrases."
+        "- Use creative phrases to avoid repetitiveness. Never use phrases like \"you'll discover\", \"You'll learn...\", \"In a world...\", \"is a journey trough...\", \"By the end you'll..\", \"this message invites you...\", \"You'll rediscover...\", etc. Assume the listener is reading many of these at a time and we want to avoid repeating phrases. Be creative and think outside the box."
         "\n\n"
         "Guidelines:\n"
         "- Use language that helps listeners imagine themselves benefiting from the message using diverse, engaging and thought provoking language that feels natural and specific to each sermon's unique message\n"
@@ -87,19 +88,34 @@ def summarize_sermon(state: AgentState):
         f"Please summarize the following sermon transcription into a single paragraph "
         f"that captures its core message and purpose:\n\n{transcription}"
     )
-    
+
     # Generate the summary with retry logic
     print("Generating sermon summary with GPT-4o-mini...")
+
+    # Count input tokens
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+    input_tokens = count_messages_tokens(messages)
+
     response = call_llm_with_retry(
         llm,
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
+        messages,
         max_retries=3
     )
-    
+
     summary_text = response.content.strip()
+
+    # Count output tokens
+    output_tokens = count_messages_tokens([{"role": "assistant", "content": summary_text}])
+    total_tokens = input_tokens + output_tokens
+
+    # Track tokens with input/output breakdown
+    tracker = get_global_tracker()
+    tracker.add_summarization_tokens(input_tokens, output_tokens)
+
+    print(f"Summarization tokens used: {total_tokens} (input: {input_tokens}, output: {output_tokens})")
     
     # Ensure it's a single paragraph (remove any internal line breaks)
     summary_text = " ".join(summary_text.split("\n")).replace("’", "'")

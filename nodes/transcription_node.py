@@ -108,7 +108,7 @@ def _format_ts(seconds: float) -> str:
 
 
 @tool
-def transcribe_audio(state: AgentState):
+def transcribe_audio(state: dict | None = None):
     """
     CPU-only Whisper transcription with segment timestamps.
 

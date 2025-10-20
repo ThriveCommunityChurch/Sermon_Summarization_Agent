@@ -17,6 +17,7 @@ from nodes.transcription_node import transcribe_audio
 from nodes.summarization_node import summarize_sermon
 from nodes.tagging_node import tag_sermon
 from utils.api_retry import call_llm_with_retry
+from utils.token_counter import reset_global_tracker
 
 # Load environment variables from .env file
 load_dotenv()
@@ -183,6 +184,9 @@ def process_single_file(file_path: str, output_dir: Path = None) -> Dict[str, An
     Returns:
         Dictionary with processing results and metadata
     """
+    # Reset token tracker for this file
+    reset_global_tracker()
+
     # Change to output directory if specified
     original_dir = Path.cwd()
     if output_dir:
@@ -196,6 +200,7 @@ def process_single_file(file_path: str, output_dir: Path = None) -> Dict[str, An
         # Create a unique thread for this file
         file_name = Path(file_path).stem
         thread = {"configurable": {"thread_id": f"sermon_{file_name}"}}
+        thread["recursion_limit"] = 150
 
         # Create the initial message instructing the agent
         inputs = [
@@ -209,9 +214,13 @@ def process_single_file(file_path: str, output_dir: Path = None) -> Dict[str, An
             ))
         ]
 
-        # Stream the workflow execution
-        for event in app.stream({"messages": inputs}, thread, stream_mode="values"):
-            pass  # Process silently in batch mode
+        # Deterministic linear execution: transcribe -> summarize -> tag
+        try:
+            transcribe_audio.invoke({})
+            summarize_sermon.invoke({})
+            tag_sermon.invoke({})
+        except Exception as e:
+            raise
 
         # Read the generated summary
         summary_path = Path("summary.txt")
@@ -474,6 +483,7 @@ def main():
 
     # Create a thread for this conversation
     thread = {"configurable": {"thread_id": "sermon_summarization_1"}}
+    thread["recursion_limit"] = 150
 
     # Create the initial message instructing the agent
     inputs = [
@@ -492,9 +502,10 @@ def main():
     print("="*80)
     print("\nStarting sermon transcription and summarization workflow...\n")
 
-    # Stream the workflow execution
-    for event in app.stream({"messages": inputs}, thread, stream_mode="values"):
-        event["messages"][-1].pretty_print()
+    # Deterministic linear execution: transcribe -> summarize -> tag
+    transcribe_audio.invoke({})
+    summarize_sermon.invoke({})
+    tag_sermon.invoke({})
 
     print("\n" + "="*80)
     print("WORKFLOW COMPLETE")
