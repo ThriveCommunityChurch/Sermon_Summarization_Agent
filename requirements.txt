@@ -4,6 +4,9 @@ langchain-openai>=0.3.30
 langgraph>=0.6.5
 langchain-core>=0.3.74
 
+# Token counting
+tiktoken>=0.7.0
+
 # Environment and utilities
 python-dotenv>=1.0.0
 
