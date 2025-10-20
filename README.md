@@ -350,6 +350,98 @@ Batch processing leverages GPU acceleration for optimal performance:
   - Set `WHISPER_FORCE_CPU=true` to use CPU mode
   - Process files individually instead of in batch mode
 
+## Full-Stack Web Application
+
+A complete web application for interacting with the sermon summarization agent has been created with:
+
+### Architecture
+
+- **Backend**: C# .NET 9 Web API (`/API`)
+- **Frontend**: React + Vite with TypeScript (`/UI`)
+- **Python Agent**: Sermon processing engine with token tracking
+
+### Getting Started with the Web App
+
+#### Prerequisites
+- .NET 9 SDK
+- Node.js 18+
+- Python 3.8+ with dependencies installed
+- OpenAI API key
+
+#### Running the Backend API
+
+1. Navigate to the API directory:
+   ```bash
+   cd API
+   ```
+
+2. Build the project:
+   ```bash
+   dotnet build
+   ```
+
+3. Run the API:
+   ```bash
+   dotnet run
+   ```
+
+   The API will start on `https://localhost:5001` (or `http://localhost:5000` in development)
+
+#### Running the Frontend UI
+
+1. Navigate to the UI directory:
+   ```bash
+   cd UI/SermonSummarizationUI
+   ```
+
+2. Install dependencies (if not already done):
+   ```bash
+   npm install
+   ```
+
+3. Create a `.env` file with the API URL:
+   ```bash
+   cp .env.example .env
+   # Edit .env and set VITE_API_URL=http://localhost:5000/api
+   ```
+
+4. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+   The UI will be available at `http://localhost:5173`
+
+5. To build for production:
+   ```bash
+   npm run build
+   ```
+
+### Features
+
+- **File Upload**: Drag-and-drop or click to upload audio/video files (MP3, MP4, WAV, M4A, MOV)
+- **Real-time Processing**: Watch as your sermon is transcribed, summarized, and tagged
+- **Skeleton Loaders**: Modern loading states with skeleton screens instead of spinners
+- **Token Tracking**: See exactly how many tokens were used for each operation
+- **Beautiful UI**: Clean, modern interface with responsive design
+- **Error Handling**: Comprehensive error messages and recovery
+
+### API Endpoints
+
+- `POST /api/sermons/process` - Upload and process a sermon file
+- `GET /api/sermons/{id}/status` - Check processing status
+- `GET /api/sermons/health` - Health check endpoint
+
+### Token Usage
+
+The application now tracks token usage across all operations:
+- **Transcription tokens**: Tokens used for audio transcription
+- **Summarization tokens**: Tokens used for generating the summary
+- **Tagging tokens**: Tokens used for semantic tag classification
+- **Total tokens**: Sum of all tokens used
+
+Token counts are displayed in the UI after processing completes.
+
 ## License
 
 See LICENSE file for details.
