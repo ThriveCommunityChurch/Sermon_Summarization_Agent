@@ -123,19 +123,29 @@ def summarize_sermon(state: dict | None = None):
     # Write outputs
     output_txt = Path("summary.txt")
     output_json = Path("summary.json")
-    
+
     # Save plain text summary
     output_txt.write_text(summary_text, encoding="utf-8")
-    
-    # Save JSON with metadata
+
+    # Read existing summary.json if it exists (to preserve waveform_data)
+    existing_data = {}
+    if output_json.exists():
+        try:
+            existing_data = json.loads(output_json.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"Warning: Could not read existing summary.json: {e}")
+            existing_data = {}
+
+    # Save JSON with metadata (preserve existing fields like waveform_data)
     metadata = {
+        **existing_data,  # Preserve existing fields (e.g., waveform_data)
         "summary": summary_text,
         "word_count": len(summary_text.split()),
         "character_count": len(summary_text),
         "model": "gpt-4o-mini",
         "transcription_length": len(transcription),
     }
-    
+
     output_json.write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2),
         encoding="utf-8"

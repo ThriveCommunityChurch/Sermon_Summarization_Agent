@@ -21,6 +21,11 @@ public class SermonProcessResponse
     public List<string>? Tags { get; set; }
 
     /// <summary>
+    /// Pre-computed waveform data (480 normalized amplitude values between 0.15 and 1.0)
+    /// </summary>
+    public List<double>? WaveformData { get; set; }
+
+    /// <summary>
     /// Total tokens consumed for this request
     /// </summary>
     public int TotalTokensUsed { get; set; }

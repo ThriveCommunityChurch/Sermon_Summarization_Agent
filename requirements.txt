@@ -15,6 +15,9 @@ torch>=2.8.0
 numpy>=2.2.6
 tqdm>=4.67.1
 
+# Audio waveform generation
+librosa>=0.10.0
+
 # Development and testing dependencies (optional)
 pytest>=7.0.0
 

@@ -13,7 +13,9 @@ interface SummaryDisplayProps {
 
 export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ result }) => {
   const [copied, setCopied] = useState(false);
+  const [waveformCopied, setWaveformCopied] = useState(false);
   const timeoutRef = useRef<number | null>(null);
+  const waveformTimeoutRef = useRef<number | null>(null);
 
   const formatDuration = (seconds: number): string => {
     if (seconds < 60) {
@@ -40,6 +42,26 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ result }) => {
       setCopied(false);
       timeoutRef.current = null;
     }, 2000);
+  };
+
+  const handleWaveformCopy = () => {
+    if (result.waveformData) {
+      navigator.clipboard.writeText(JSON.stringify(result.waveformData, null, 2));
+
+      // Clear any existing timeout
+      if (waveformTimeoutRef.current !== null) {
+        clearTimeout(waveformTimeoutRef.current);
+      }
+
+      // Set copied state to true
+      setWaveformCopied(true);
+
+      // Reset after 2 seconds
+      waveformTimeoutRef.current = window.setTimeout(() => {
+        setWaveformCopied(false);
+        waveformTimeoutRef.current = null;
+      }, 2000);
+    }
   };
 
   return (
@@ -79,6 +101,39 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ result }) => {
                   {tag}
                 </span>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Waveform Data Section */}
+        {result.waveformData && result.waveformData.length > 0 && (
+          <div className="waveform-section">
+            <h3>Waveform Data</h3>
+            <div className="code-block">
+              <div className="code-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="code-label">Audio Waveform (480 normalized values)</span>
+                <FontAwesomeIcon
+                  icon={waveformCopied ? faCheck : faCopy}
+                  style={{
+                    color: waveformCopied ? '#10b981' : '#64748b',
+                    height: '12px',
+                    transition: 'color 0.2s ease',
+                    cursor: 'pointer'
+                  }}
+                  onClick={handleWaveformCopy}
+                />
+              </div>
+              <div className="code-content waveform-json">
+                <pre>{JSON.stringify(result.waveformData, null, 2)}</pre>
+              </div>
+            </div>
+            <div className="waveform-info">
+              <p>
+                <strong>Format:</strong> Array of {result.waveformData.length} normalized amplitude values (0.15-1.0 range)
+              </p>
+              <p>
+                <strong>Usage:</strong> Copy this data for use in mobile apps or audio visualization components
+              </p>
             </div>
           </div>
         )}
