@@ -1,0 +1,297 @@
+.waveform-file-row {
+  background-color: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+
+.waveform-file-row:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* File Row Header */
+.file-row-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem;
+  cursor: pointer;
+  user-select: none;
+  min-height: 80px;
+}
+
+.file-row-header:hover {
+  background-color: #f9f9f9;
+}
+
+.status-icon {
+  font-size: 1.25rem;
+  font-weight: bold;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-success {
+  color: #28a745;
+  background-color: #d4edda;
+}
+
+.status-error {
+  color: #dc3545;
+  background-color: #f8d7da;
+}
+
+.status-processing {
+  color: #ffc107;
+  background-color: #fff3cd;
+  animation: spin 1s linear infinite;
+}
+
+.status-pending {
+  color: #6c757d;
+  background-color: #e9ecef;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* File Info Container */
+.file-info-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.file-info-main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.filename {
+  font-weight: 600;
+  color: #1a1a1a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.95rem;
+}
+
+.status-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.35rem 0.65rem;
+  border-radius: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.status-badge.status-success {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.status-badge.status-error {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.status-badge.status-processing {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.status-badge.status-pending {
+  background-color: #e9ecef;
+  color: #383d41;
+}
+
+.file-info-details {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+}
+
+.sample-count,
+.file-size {
+  color: #666;
+  padding: 0.25rem 0.65rem;
+  background-color: #f0f0f0;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.error-badge {
+  color: #dc3545;
+  background-color: #ffe6e6;
+  padding: 0.25rem 0.65rem;
+  border-radius: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+  font-size: 0.85rem;
+}
+
+.expand-icon {
+  font-size: 0.75rem;
+  color: #666;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.expand-icon.expanded {
+  transform: rotate(180deg);
+}
+
+/* File Row Details */
+.file-row-details {
+  padding: 1rem;
+  border-top: 1px solid #e0e0e0;
+  background-color: #fafafa;
+}
+
+.loading-waveform {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+  font-style: italic;
+}
+
+/* Waveform Data Section */
+.waveform-data-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.waveform-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.waveform-label {
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.copy-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #4a90e2;
+  background-color: white;
+  border: 1px solid #4a90e2;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.copy-button:hover {
+  background-color: #4a90e2;
+  color: white;
+}
+
+.waveform-preview {
+  padding: 1rem;
+  background-color: #2d2d2d;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.waveform-preview code {
+  color: #f8f8f2;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  white-space: pre;
+}
+
+/* Error Details */
+.error-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background-color: #fee;
+  border: 1px solid #fcc;
+  border-radius: 6px;
+}
+
+.error-label {
+  font-weight: 600;
+  color: #c00;
+}
+
+.error-text {
+  color: #666;
+}
+
+/* No Data */
+.no-data {
+  text-align: center;
+  padding: 2rem;
+  color: #999;
+  font-style: italic;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .file-row-header {
+    min-height: auto;
+    padding: 1rem;
+    gap: 0.75rem;
+  }
+
+  .file-info-container {
+    gap: 0.4rem;
+  }
+
+  .file-info-details {
+    gap: 0.5rem;
+  }
+
+  .status-badge {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
+  .sample-count,
+  .file-size,
+  .error-badge {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.5rem;
+  }
+
+  .error-badge {
+    max-width: 200px;
+  }
+
+  .waveform-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .copy-button {
+    width: 100%;
+  }
+}
+

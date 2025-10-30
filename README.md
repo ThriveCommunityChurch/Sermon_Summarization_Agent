@@ -6,6 +6,7 @@ A LangGraph-based AI agent that transcribes and summarizes sermon video recordin
 
 - **Transcription**: Converts audio from MP4/MP3 files to text using OpenAI Whisper
 - **GPU Acceleration**: Automatically detects and uses NVIDIA GPU (CUDA) for much faster transcription
+- **Waveform Generation**: Pre-computes audio waveform data (480 normalized amplitude values) for mobile app visualization allowing it to be rendered on the mobile app via adaptive downsampling within the viewport of the device.
 - **Summarization**: Generates end-user-friendly single-paragraph summaries using GPT-4o-mini
 - **Semantic Tagging**: Automatically applies relevant topical tags to summaries for better organization and discovery
 - **Batch Processing**: Process entire directories of sermon files at once
@@ -20,6 +21,37 @@ A LangGraph-based AI agent that transcribes and summarizes sermon video recordin
 
 ## Installation
 
+### Quick Setup with GPU Support (Recommended)
+
+For the best performance with GPU acceleration, use the automated setup script:
+
+**Windows:**
+```bash
+setup_venv_gpu.bat
+```
+
+**macOS/Linux:**
+```bash
+chmod +x setup_venv_gpu.sh
+./setup_venv_gpu.sh
+```
+
+This script will:
+- Create a Python virtual environment
+- Install CUDA-enabled PyTorch (for GPU acceleration)
+- Install all other dependencies in the correct order
+- Verify GPU detection
+
+Then configure your environment:
+```bash
+cp .env.example .env
+# Edit .env and add your OpenAI API key
+```
+
+### Manual Installation (CPU-only)
+
+If you don't have an NVIDIA GPU or prefer manual setup:
+
 1. **Clone the repository**:
 2. **Create a virtual environment**:
    ```bash
@@ -33,7 +65,7 @@ A LangGraph-based AI agent that transcribes and summarizes sermon video recordin
    pip install -r requirements.txt
    ```
 
-   > **Note**: This installs CPU-only PyTorch. For GPU acceleration (4x faster), see the [GPU Acceleration](#gpu-acceleration-) section below.
+   > **Note**: This installs CPU-only PyTorch. For GPU acceleration (4x faster), use the automated setup script above or see the [GPU Acceleration](#gpu-acceleration-) section below.
 
 4. **Install FFmpeg** (if not already installed):
    - **Windows**: `choco install ffmpeg` or download from [ffmpeg.org](https://ffmpeg.org/download.html)
@@ -182,16 +214,20 @@ The agent generates:
 
 ## Architecture
 
-The agent uses LangGraph with three main nodes:
+The agent uses LangGraph with four main nodes:
 
 1. **Transcribe Node**: Converts audio to text using OpenAI Whisper
    - Automatically detects and uses GPU (CUDA) if available
    - Extracts audio from video files using FFmpeg
    - Generates timestamped segments
-2. **Summarize Node**: Generates a summary using GPT-4o-mini
+2. **Waveform Node**: Generates audio waveform data using librosa
+   - Calculates 480 RMS (Root Mean Square) amplitude values
+   - Normalizes values to 0.15-1.0 range for consistent visualization
+   - Saves waveform data to summary.json for API consumption
+3. **Summarize Node**: Generates a summary using GPT-4o-mini
    - Creates end-user-friendly single-paragraph summaries
    - Includes metadata (word count, processing date, etc.)
-3. **Tagging Node**: Applies semantic tags to summaries
+4. **Tagging Node**: Applies semantic tags to summaries
    - Analyzes summary content using GPT-4o-mini
    - Selects up to 5 relevant tags from a predefined list (config/tags_config.py)
    - Tags are cached in memory for efficient batch processing
@@ -240,6 +276,54 @@ To add new tags:
 2. Add your new tag to the appropriate category list (or create a new category)
 3. The tag will be automatically included in `ALL_TAGS` and available on the next run
 
+## Waveform Generation
+
+The agent automatically generates pre-computed audio waveform data for mobile app visualization, eliminating the need for resource-intensive client-side processing.
+
+### How It Works
+
+1. **Audio Analysis**: After transcription, the waveform node uses librosa to analyze the extracted audio file
+2. **RMS Calculation**: Divides audio into 480 equal segments and calculates [RMS (Root Mean Square)](https://en.wikipedia.org/wiki/Root_mean_square) amplitude for each
+3. **Normalization**: Values are normalized to 0.15-1.0 range for consistent visualization across different audio files
+4. **Storage**: Waveform data is saved to `summary.json` as a `waveform_data` array field
+
+### Why RMS (Root Mean Square)?
+
+[RMS](https://en.wikipedia.org/wiki/Root_mean_square) provides a better representation of perceived loudness than peak amplitude values:
+- More stable and less sensitive to transient spikes
+- Better represents the energy content of audio segments
+
+### Output Format
+
+The waveform data is an array of 480 floating-point values between 0.15 and 1.0:
+
+```json
+{
+  "summary": "This sermon explores...",
+  "tags": ["Faith", "Hope"],
+  "waveform_data": [
+    0.42, 0.38, 0.45, 0.52, 0.48, 0.55, 0.61, 0.58, 0.64, 0.71,
+    0.68, 0.75, 0.82, 0.78, 0.85, 0.91, 0.88, 0.95, 0.89, 0.83,
+    ...
+  ]
+}
+```
+
+### Benefits
+
+- **Performance**: Pre-computed server-side, eliminating mobile device CPU load
+- **Consistency**: Normalized values ensure consistent visualization across all audio files
+- **Simplicity**: Ready-to-use JSON format for direct integration with mobile apps
+- **Fast**: Adds only ~5-10 seconds to processing time for typical sermon lengths
+
+### Dependencies
+
+Waveform generation requires the `librosa` library, which is included in `requirements.txt`:
+
+```bash
+pip install librosa>=0.10.0
+```
+
 ### Performance
 
 - Tags are loaded once and cached in memory during batch processing
@@ -280,7 +364,18 @@ The agent automatically detects and uses NVIDIA GPUs (CUDA) for Whisper transcri
 
 **Installing CUDA-Enabled PyTorch:**
 
-By default, `requirements.txt` installs CPU-only PyTorch. To enable GPU acceleration:
+**Recommended: Use the automated setup script** (see [Installation](#installation) section):
+```bash
+# Windows
+setup_venv_gpu.bat
+
+# macOS/Linux
+./setup_venv_gpu.sh
+```
+
+**Manual Installation:**
+
+If you already have a venv and need to add GPU support:
 
 1. **Uninstall CPU-only PyTorch**:
    ```bash
@@ -305,6 +400,12 @@ By default, `requirements.txt` installs CPU-only PyTorch. To enable GPU accelera
    ✓ GPU 0: NVIDIA GeForce RTX [Your GPU Model]
    🚀 GPU is ready to use! Whisper will run MUCH faster.
    ```
+
+**Important Note about librosa:**
+When installing `librosa` (required for waveform generation), pip may replace CUDA-enabled PyTorch with the CPU version. The automated setup script handles this by installing PyTorch with CUDA first, then librosa. If you install packages manually and lose GPU support, simply reinstall CUDA-enabled PyTorch:
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+```
 
 **To force CPU mode:**
 Set `WHISPER_FORCE_CPU=true` in your `.env` file (useful for testing or if you encounter GPU memory issues)

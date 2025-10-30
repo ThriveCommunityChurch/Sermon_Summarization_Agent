@@ -50,6 +50,42 @@
   opacity: 0.9;
 }
 
+/* Tab Navigation */
+.tab-navigation {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  background-color: white;
+  border-bottom: 2px solid #e0e0e0;
+  padding: 0 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.tab-button {
+  padding: 16px 32px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #666;
+  background-color: transparent;
+  border: none;
+  border-bottom: 8px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  top: 2px;
+  margin-bottom: -6px;
+}
+
+.tab-button:hover {
+  color: #4a90e2;
+  background-color: #f9f9f9;
+}
+
+.tab-button.active {
+  color: #4a90e2;
+  border-bottom-color: #4a90e2;
+}
+
 .app-main {
   flex: 1;
   padding: 40px 20px;

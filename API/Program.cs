@@ -1,5 +1,6 @@
 using SermonSummarizationAPI.Services;
 using SermonSummarizationAPI.Middleware;
+using SermonSummarizationAPI.Hubs;
 using Microsoft.AspNetCore.Http.Features;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,14 +23,20 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins("http://localhost:5173", "http://localhost:5174", "http://localhost:3000")
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowCredentials(); // Required for SignalR
     });
 });
 
 // Register services
+builder.Services.AddMemoryCache();
 builder.Services.AddScoped<IPythonAgentService, PythonAgentService>();
 builder.Services.AddScoped<ISermonProcessingService, SermonProcessingService>();
 builder.Services.AddScoped<ITokenTrackingService, TokenTrackingService>();
+builder.Services.AddScoped<IWaveformService, WaveformService>();
+
+// Add SignalR
+builder.Services.AddSignalR();
 
 // Configure file upload limits
 builder.Services.Configure<FormOptions>(options =>
@@ -53,6 +60,9 @@ else
 app.UseCors("AllowReactApp");
 app.UseAuthorization();
 app.MapControllers();
+
+// Map SignalR hub
+app.MapHub<WaveformProgressHub>("/hubs/waveform-progress");
 
 app.Run();
 

@@ -152,6 +152,9 @@ def transcribe_audio(state: dict | None = None):
     audio_file_path = _extract_audio_if_needed(Path(file_path))
     file_path = str(audio_file_path)
 
+    # Store audio file path in environment for waveform generation
+    os.environ["AUDIO_FILE_PATH"] = file_path
+
     # Detect and configure device (GPU if available, otherwise CPU)
     # Allow forcing CPU mode via environment variable
     force_cpu = os.environ.get("WHISPER_FORCE_CPU", "false").lower() == "true"

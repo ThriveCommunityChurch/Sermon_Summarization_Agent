@@ -3,10 +3,14 @@ import './App.css';
 import { FileUpload } from './components/FileUpload';
 import { SummaryDisplay } from './components/SummaryDisplay';
 import { SkeletonCodeBlock } from './components/SkeletonLoader';
+import { BulkWaveformGenerator } from './components/BulkWaveformGenerator';
 import { apiClient } from './services/api';
 import type { SermonProcessResponse } from './services/api';
 
+type TabType = 'sermon' | 'waveform';
+
 function App() {
+  const [activeTab, setActiveTab] = useState<TabType>('sermon');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SermonProcessResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,23 +46,45 @@ function App() {
         </div>
       </header>
 
+      {/* Tab Navigation */}
+      <nav className="tab-navigation">
+        <button
+          className={`tab-button ${activeTab === 'sermon' ? 'active' : ''}`}
+          onClick={() => setActiveTab('sermon')}
+        >
+          Sermon Processing
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'waveform' ? 'active' : ''}`}
+          onClick={() => setActiveTab('waveform')}
+        >
+          Bulk Waveform Generation
+        </button>
+      </nav>
+
       <main className="app-main">
         <div className="container">
-          <FileUpload onFileSelect={handleFileSelect} isLoading={isLoading} />
+          {activeTab === 'sermon' ? (
+            <>
+              <FileUpload onFileSelect={handleFileSelect} isLoading={isLoading} />
 
-          {error && (
-            <div className="error-message">
-              <span className="error-icon">⚠️</span>
-              <div>
-                <p className="error-title">Processing Failed</p>
-                <p className="error-text">{error}</p>
-              </div>
-            </div>
+              {error && (
+                <div className="error-message">
+                  <span className="error-icon">⚠️</span>
+                  <div>
+                    <p className="error-title">Processing Failed</p>
+                    <p className="error-text">{error}</p>
+                  </div>
+                </div>
+              )}
+
+              {isLoading && <SkeletonCodeBlock />}
+
+              {result && !isLoading && <SummaryDisplay result={result} />}
+            </>
+          ) : (
+            <BulkWaveformGenerator />
           )}
-
-          {isLoading && <SkeletonCodeBlock />}
-
-          {result && !isLoading && <SummaryDisplay result={result} />}
         </div>
       </main>
 

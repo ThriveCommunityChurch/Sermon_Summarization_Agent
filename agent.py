@@ -14,6 +14,7 @@ from langchain_core.messages import HumanMessage
 
 from classes.agent_state import AgentState
 from nodes.transcription_node import transcribe_audio
+from nodes.waveform_node import generate_waveform
 from nodes.summarization_node import summarize_sermon
 from nodes.tagging_node import tag_sermon
 from utils.api_retry import call_llm_with_retry
@@ -51,8 +52,8 @@ def call_model(state):
     return {"messages": [response]}
 
 
-# Build tools - transcribe, summarize, and tag
-tools = [transcribe_audio, summarize_sermon, tag_sermon]
+# Build tools - transcribe, waveform, summarize, and tag
+tools = [transcribe_audio, generate_waveform, summarize_sermon, tag_sermon]
 tool_node = ToolNode(tools)
 
 # Use GPT-4o-mini as the orchestration model
@@ -207,9 +208,10 @@ def process_single_file(file_path: str, output_dir: Path = None) -> Dict[str, An
             HumanMessage(content=(
                 "Please perform the following tasks in sequence:\n"
                 "1) Use the transcribe_audio tool to transcribe the sermon audio/video file\n"
-                "2) After transcription is complete, use the summarize_sermon tool to generate "
+                "2) Use the generate_waveform tool to generate audio waveform data from the audio file\n"
+                "3) After transcription and waveform generation are complete, use the summarize_sermon tool to generate "
                 "a single-paragraph summary of the sermon's core message and purpose\n"
-                "3) After summarization is complete, use the tag_sermon tool to apply relevant "
+                "4) After summarization is complete, use the tag_sermon tool to apply relevant "
                 "semantic tags to the summary based on its content"
             ))
         ]
@@ -502,8 +504,9 @@ def main():
     print("="*80)
     print("\nStarting sermon transcription and summarization workflow...\n")
 
-    # Deterministic linear execution: transcribe -> summarize -> tag
+    # Deterministic linear execution: transcribe -> waveform -> summarize -> tag
     transcribe_audio.invoke({})
+    generate_waveform.invoke({})
     summarize_sermon.invoke({})
     tag_sermon.invoke({})
 
@@ -514,7 +517,7 @@ def main():
     print("  - transcription.txt: Full sermon transcription")
     print("  - transcription_segments.json: Transcription with timestamps")
     print("  - summary.txt: Single-paragraph sermon summary")
-    print("  - summary.json: Summary with metadata and tags")
+    print("  - summary.json: Summary with metadata, tags, and waveform data")
     print("\n")
 
 
