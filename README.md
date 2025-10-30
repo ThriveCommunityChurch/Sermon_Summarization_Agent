@@ -328,6 +328,8 @@ Waveform generation requires the `librosa` library, which is included in `requir
 pip install librosa>=0.10.0
 ```
 
+While `librosa` has some really neat advanced features, we're only using it for RMS amplitude calculations 
+
 ### Performance
 
 - Tags are loaded once and cached in memory during batch processing
