@@ -17,6 +17,7 @@ from nodes.transcription_node import transcribe_audio
 from nodes.waveform_node import generate_waveform
 from nodes.summarization_node import summarize_sermon
 from nodes.tagging_node import tag_sermon
+from nodes.clip_generation_node import generate_video_clip
 from utils.api_retry import call_llm_with_retry
 from utils.token_counter import reset_global_tracker
 
@@ -52,8 +53,8 @@ def call_model(state):
     return {"messages": [response]}
 
 
-# Build tools - transcribe, waveform, summarize, and tag
-tools = [transcribe_audio, generate_waveform, summarize_sermon, tag_sermon]
+# Build tools - transcribe, waveform, summarize, tag, and clip generation
+tools = [transcribe_audio, generate_waveform, summarize_sermon, tag_sermon, generate_video_clip]
 tool_node = ToolNode(tools)
 
 # Use GPT-4o-mini as the orchestration model
@@ -212,15 +213,25 @@ def process_single_file(file_path: str, output_dir: Path = None) -> Dict[str, An
                 "3) After transcription and waveform generation are complete, use the summarize_sermon tool to generate "
                 "a single-paragraph summary of the sermon's core message and purpose\n"
                 "4) After summarization is complete, use the tag_sermon tool to apply relevant "
-                "semantic tags to the summary based on its content"
+                "semantic tags to the summary based on its content\n"
+                "5) After tagging is complete, use the generate_video_clip tool to create a summary video "
+                "clip from the most important moments (only if ENABLE_CLIP_GENERATION is true)"
             ))
         ]
 
-        # Deterministic linear execution: transcribe -> summarize -> tag
+        # Deterministic linear execution: transcribe -> waveform -> summarize -> tag -> clip (optional)
         try:
             transcribe_audio.invoke({})
+            generate_waveform.invoke({})
             summarize_sermon.invoke({})
             tag_sermon.invoke({})
+
+            # Conditionally generate clip
+            if os.environ.get("ENABLE_CLIP_GENERATION", "false").lower() == "true":
+                print("\nGenerating summary video clip...")
+                generate_video_clip.invoke({})
+            else:
+                print("\nSkipping video clip generation (ENABLE_CLIP_GENERATION not set)")
         except Exception as e:
             raise
 
@@ -492,10 +503,13 @@ def main():
         HumanMessage(content=(
             "Please perform the following tasks in sequence:\n"
             "1) Use the transcribe_audio tool to transcribe the sermon audio/video file\n"
-            "2) After transcription is complete, use the summarize_sermon tool to generate "
+            "2) Use the generate_waveform tool to generate audio waveform data from the audio file\n"
+            "3) After transcription and waveform generation are complete, use the summarize_sermon tool to generate "
             "a single-paragraph summary of the sermon's core message and purpose\n"
-            "3) After summarization is complete, use the tag_sermon tool to apply relevant "
-            "semantic tags to the summary based on its content"
+            "4) After summarization is complete, use the tag_sermon tool to apply relevant "
+            "semantic tags to the summary based on its content\n"
+            "5) After tagging is complete, use the generate_video_clip tool to create a summary video "
+            "clip from the most important moments (only if ENABLE_CLIP_GENERATION is true)"
         ))
     ]
 
@@ -504,11 +518,18 @@ def main():
     print("="*80)
     print("\nStarting sermon transcription and summarization workflow...\n")
 
-    # Deterministic linear execution: transcribe -> waveform -> summarize -> tag
+    # Deterministic linear execution: transcribe -> waveform -> summarize -> tag -> clip (optional)
     transcribe_audio.invoke({})
     generate_waveform.invoke({})
     summarize_sermon.invoke({})
     tag_sermon.invoke({})
+
+    # Conditionally generate clip
+    if os.environ.get("ENABLE_CLIP_GENERATION", "false").lower() == "true":
+        print("\nGenerating summary video clip...")
+        generate_video_clip.invoke({})
+    else:
+        print("\nSkipping video clip generation (ENABLE_CLIP_GENERATION not set)")
 
     print("\n" + "="*80)
     print("WORKFLOW COMPLETE")
@@ -518,6 +539,9 @@ def main():
     print("  - transcription_segments.json: Transcription with timestamps")
     print("  - summary.txt: Single-paragraph sermon summary")
     print("  - summary.json: Summary with metadata, tags, and waveform data")
+    if os.environ.get("ENABLE_CLIP_GENERATION", "false").lower() == "true":
+        print(f"  - {args.file.split('.')[0]}_Summary.mp4: Summary video clip")
+        print(f"  - {args.file.split('.')[0]}_Summary_metadata.json: Clip generation metadata")
     print("\n")
 
 

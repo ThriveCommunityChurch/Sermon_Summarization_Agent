@@ -5,6 +5,7 @@ import { faCheck } from '@fortawesome/free-solid-svg-icons';
 
 import type { SermonProcessResponse } from '../services/api';
 import { getCostBreakdown, formatCost } from '../utils/costCalculator';
+import { VideoClipSection } from './VideoClipSection';
 import './SummaryDisplay.css';
 
 interface SummaryDisplayProps {
@@ -105,6 +106,15 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ result }) => {
           </div>
         )}
 
+        {/* Video Clip Section */}
+        {result.videoClipGenerated && result.videoClipFilename && (
+          <VideoClipSection
+            videoClipFilename={result.videoClipFilename}
+            videoClipPath={result.videoClipPath}
+            videoClipMetadata={result.videoClipMetadata}
+          />
+        )}
+
         {/* Waveform Data Section */}
         {result.waveformData && result.waveformData.length > 0 && (
           <div className="waveform-section">
@@ -153,7 +163,9 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ result }) => {
             result.tokenBreakdown.summarizationInputTokens!,
             result.tokenBreakdown.summarizationOutputTokens!,
             result.tokenBreakdown.taggingInputTokens!,
-            result.tokenBreakdown.taggingOutputTokens!
+            result.tokenBreakdown.taggingOutputTokens!,
+            result.tokenBreakdown.clipGenerationInputTokens,
+            result.tokenBreakdown.clipGenerationOutputTokens
           );
 
           return (
@@ -184,6 +196,14 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ result }) => {
                         {formatCost(costs.taggingCost)}
                       </span>
                     </div>
+                    {costs.clipGenerationCost !== undefined && (
+                      <div className="token-item">
+                        <span className="token-label">Clip Generation</span>
+                        <span className="token-value">
+                          {formatCost(costs.clipGenerationCost)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -260,6 +280,36 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ result }) => {
                         </div>
                       </div>
                     </div>
+
+                    {result.tokenBreakdown.clipGenerationTokens != null && (
+                      <div className="operation-section">
+                        <h4>Clip Generation</h4>
+                        <div className="tokens-grid">
+                          <div className="token-item">
+                            <span className="token-label">Total</span>
+                            <span className="token-value">
+                              {result.tokenBreakdown.clipGenerationTokens.toLocaleString()}
+                            </span>
+                          </div>
+                          {result.tokenBreakdown.clipGenerationInputTokens != null && (
+                            <div className="token-item">
+                              <span className="token-label">Input</span>
+                              <span className="token-value">
+                                {result.tokenBreakdown.clipGenerationInputTokens.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                          {result.tokenBreakdown.clipGenerationOutputTokens != null && (
+                            <div className="token-item">
+                              <span className="token-label">Output</span>
+                              <span className="token-value">
+                                {result.tokenBreakdown.clipGenerationOutputTokens.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="tokens-grid">
@@ -275,6 +325,14 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({ result }) => {
                         {result.tokenBreakdown.taggingTokens.toLocaleString()}
                       </span>
                     </div>
+                    {result.tokenBreakdown.clipGenerationTokens != null && (
+                      <div className="token-item">
+                        <span className="token-label">Clip Generation</span>
+                        <span className="token-value">
+                          {result.tokenBreakdown.clipGenerationTokens.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </>

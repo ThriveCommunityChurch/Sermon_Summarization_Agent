@@ -54,4 +54,24 @@ public class SermonProcessResponse
     /// Processing duration in seconds
     /// </summary>
     public double ProcessingDurationSeconds { get; set; }
+
+    /// <summary>
+    /// Whether a video clip was generated
+    /// </summary>
+    public bool VideoClipGenerated { get; set; }
+
+    /// <summary>
+    /// Filename of the generated video clip (e.g., "Sermon_Summary.mp4")
+    /// </summary>
+    public string? VideoClipFilename { get; set; }
+
+    /// <summary>
+    /// Full absolute file system path to the generated video clip file
+    /// </summary>
+    public string? VideoClipPath { get; set; }
+
+    /// <summary>
+    /// Metadata about the generated video clip (parsed from JSON)
+    /// </summary>
+    public object? VideoClipMetadata { get; set; }
 }

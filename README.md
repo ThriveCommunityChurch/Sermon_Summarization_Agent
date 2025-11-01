@@ -7,6 +7,7 @@ A LangGraph-based AI agent that transcribes and summarizes sermon video recordin
 - **Transcription**: Converts audio from MP4/MP3 files to text using OpenAI Whisper
 - **GPU Acceleration**: Automatically detects and uses NVIDIA GPU (CUDA) for much faster transcription
 - **Waveform Generation**: Pre-computes audio waveform data (480 normalized amplitude values) for mobile app visualization allowing it to be rendered on the mobile app via adaptive downsampling within the viewport of the device.
+- **Video Clip Generation**: Automatically creates sub-10-minute summary MP4s from full sermons using AI-powered segment selection
 - **Summarization**: Generates end-user-friendly single-paragraph summaries using GPT-4o-mini
 - **Semantic Tagging**: Automatically applies relevant topical tags to summaries for better organization and discovery
 - **Batch Processing**: Process entire directories of sermon files at once
@@ -218,7 +219,7 @@ The agent generates:
 
 ## Architecture
 
-The agent uses LangGraph with four main nodes:
+The agent uses LangGraph with five main nodes:
 
 1. **Transcribe Node**: Converts audio to text using OpenAI Whisper
    - Automatically detects and uses GPU (CUDA) if available
@@ -236,6 +237,11 @@ The agent uses LangGraph with four main nodes:
    - Selects up to 5 relevant tags from a predefined list (config/tags_config.py)
    - Tags are cached in memory for efficient batch processing
    - Updates summary.json with a tags array
+5. **Clip Generation Node** (optional): Creates summary video clips
+   - Uses GPT-4o-mini to analyze transcript and select key moments
+   - Optimizes segments with context padding and gap merging
+   - Generates MP4 clips using FFMPEG with GPU acceleration support
+   - Only runs when `ENABLE_CLIP_GENERATION=true` in `.env`
 
 ## Semantic Tagging
 
@@ -328,7 +334,7 @@ Waveform generation requires the `librosa` library, which is included in `requir
 pip install librosa>=0.10.0
 ```
 
-While `librosa` has some really neat advanced features, we're only using it for RMS amplitude calculations 
+While `librosa` has some really neat advanced features, we're only using it for RMS amplitude calculations
 
 ### Performance
 
@@ -337,9 +343,125 @@ While `librosa` has some really neat advanced features, we're only using it for 
 - Each sermon typically takes 3-4 seconds for tag classification
 - Cost: ~$0.0008 per sermon (very affordable with GPT-4o-mini)
 
+## Video Clip Generation
+
+The agent can automatically generate short summary videos (under 10 minutes) from full sermon recordings. This feature uses AI to intelligently select and stitch together the most important moments from your sermon. This can be extremely useful for creating social media content, or other short-form content for casual viewing.
+
+### How It Works
+
+1. **AI-Powered Selection**: GPT-4o-mini analyzes the sermon transcript to identify key moments and themes
+2. **Intelligent Segmentation**: Selects 30-60 second segments that capture the most important content
+3. **Smart Optimization**: Merges nearby segments, adds context padding, and ensures chronological order
+4. **Video Processing**: Uses FFMPEG to extract and concatenate selected segments with optional fade transitions
+5. **GPU Acceleration**: Supports NVIDIA CUDA (h264_nvenc) for faster video encoding with automatic CPU fallback
+
+### Enabling Video Clip Generation
+
+**Video clip generation is disabled by default** and must be explicitly enabled in your `.env` file:
+
+```bash
+# Enable video clip generation
+ENABLE_CLIP_GENERATION=true
+```
+
+### Configuration Options
+
+Add these settings to your `.env` file to customize clip generation behavior:
+
+```bash
+# Video Clip Generation Settings
+ENABLE_CLIP_GENERATION=false          # Set to 'true' to enable (default: false)
+MAX_CLIP_DURATION=600                 # Maximum clip length in seconds (default: 600 = 10 minutes)
+MIN_SEGMENT_LENGTH=30                 # Minimum segment length in seconds (default: 30)
+CONTEXT_PADDING=5                     # Seconds to add before/after each segment (default: 5)
+MERGE_GAP_THRESHOLD=15                # Merge segments if gap is less than this (default: 15 seconds)
+ENABLE_FADE_TRANSITIONS=true          # Add fade transitions between segments (default: true)
+FADE_DURATION=0.5                     # Fade transition duration in seconds (default: 0.5)
+CLIP_OUTPUT_DIR=                      # Optional: Custom output directory (default: temp directory)
+```
+
+### GPU-Accelerated Video Encoding
+
+For significantly faster video processing, you can enable GPU-accelerated encoding using NVIDIA CUDA:
+
+**Performance Comparison:**
+- **CPU (libx264)**: Standard encoding, works everywhere
+- **GPU (h264_nvenc)**: 3-5x faster encoding on NVIDIA GPUs (RTX/GTX series)
+
+**Setup Instructions:**
+
+See the detailed [GPU Encoding Setup Guide](docs/GPU_ENCODING_SETUP.md) for step-by-step instructions on:
+- Installing NVIDIA drivers and CUDA toolkit
+- Building FFMPEG with CUDA support
+- Verifying GPU encoding is working
+- Troubleshooting common issues
+
+**Automatic Fallback:**
+If GPU encoding is not available or fails, the agent automatically falls back to CPU encoding (libx264) to ensure your clips are always generated successfully.
+
+### Output Files
+
+When clip generation is enabled, the agent produces:
+
+- `{filename}_Summary.mp4`: The generated summary video clip
+- `{filename}_Summary_metadata.json`: Detailed metadata including:
+  - Selected segments with timestamps and importance scores
+  - Processing statistics (AI selection time, encoding time, etc.)
+  - GPU encoding information
+  - Token usage for AI segment selection
+  - Compression ratio and file size reduction
+
+### Example Output
+
+```json
+{
+  "version": "2.0",
+  "generated_at": "2025-11-01 14:30:00",
+  "original_video": {
+    "duration_seconds": 2400,
+    "file_size_mb": 450.5
+  },
+  "output_video": {
+    "duration_seconds": 540,
+    "file_size_mb": 95.2,
+    "size_reduction_percent": 78.9
+  },
+  "summary": {
+    "total_segments": 12,
+    "total_duration_seconds": 540,
+    "average_importance_score": 8.5,
+    "compression_ratio": 4.44
+  },
+  "gpu_info": {
+    "encoding_method": "GPU (h264_nvenc)",
+    "gpu_available": true
+  }
+}
+```
+
+### Benefits
+
+- **Time-Saving**: Automatically creates shareable highlight reels from full sermons
+- **AI-Powered**: Intelligently selects the most impactful moments
+- **Flexible**: Highly configurable to match your needs
+- **Fast**: GPU acceleration makes processing quick even for long sermons
+- **Professional**: Smooth fade transitions and optimized encoding
+- **Cost-Effective**: Uses GPT-4o-mini for affordable AI segment selection (~$0.001-0.003 per sermon)
+
+### Token Usage
+
+Video clip generation adds minimal token usage:
+- **Input tokens**: Transcript analysis (~5,000-15,000 tokens depending on sermon length)
+- **Output tokens**: Segment selection data (~500-1,500 tokens)
+- **Cost**: Approximately $0.001-0.003 per sermon with GPT-4o-mini
+
+Token usage is tracked separately and included in the total cost breakdown.
+
 ## Configuration
 
 Environment variables (in `.env`):
+
+### Core Settings
 
 - `OPENAI_API_KEY`: Your OpenAI API key (required)
 - `WHISPER_MODEL`: Whisper model to use (default: `small.en`)
@@ -347,6 +469,19 @@ Environment variables (in `.env`):
   - Larger models are more accurate but slower (GPU highly recommended for medium/large)
 - `WHISPER_FORCE_CPU`: Force CPU mode even if GPU is available (default: `false`)
 - `SERMON_AUDIO_DIR`: Directory to search for sermon files (optional)
+
+### Video Clip Generation Settings
+
+- `ENABLE_CLIP_GENERATION`: Enable automatic video clip generation (default: `false`)
+- `MAX_CLIP_DURATION`: Maximum clip length in seconds (default: `600`)
+- `MIN_SEGMENT_LENGTH`: Minimum segment length in seconds (default: `30`)
+- `CONTEXT_PADDING`: Seconds to add before/after each segment (default: `5`)
+- `MERGE_GAP_THRESHOLD`: Merge segments if gap is less than this in seconds (default: `15`)
+- `ENABLE_FADE_TRANSITIONS`: Add fade transitions between segments (default: `true`)
+- `FADE_DURATION`: Fade transition duration in seconds (default: `0.5`)
+- `CLIP_OUTPUT_DIR`: Custom output directory for clips (optional, defaults to temp directory)
+
+See the [Video Clip Generation](#video-clip-generation) section for detailed information.
 
 ### GPU Acceleration ⚡
 
@@ -537,13 +672,14 @@ A complete web application for interacting with the sermon summarization agent h
 
 ### Token Usage
 
-The application now tracks token usage across all operations:
+The application tracks token usage across all operations:
 - **Transcription tokens**: Tokens used for audio transcription
 - **Summarization tokens**: Tokens used for generating the summary
 - **Tagging tokens**: Tokens used for semantic tag classification
+- **Clip generation tokens**: Tokens used for AI-powered segment selection (when enabled)
 - **Total tokens**: Sum of all tokens used
 
-Token counts are displayed in the UI after processing completes.
+Token counts and associated costs are displayed in the UI after processing completes.
 
 ## License
 
