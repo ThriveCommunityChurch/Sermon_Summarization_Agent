@@ -34,4 +34,19 @@ public class TokenBreakdown
     /// Output tokens used for tagging
     /// </summary>
     public int TaggingOutputTokens { get; set; }
+
+    /// <summary>
+    /// Total tokens used for clip generation (input + output)
+    /// </summary>
+    public int? ClipGenerationTokens { get; set; }
+
+    /// <summary>
+    /// Input tokens used for clip generation
+    /// </summary>
+    public int? ClipGenerationInputTokens { get; set; }
+
+    /// <summary>
+    /// Output tokens used for clip generation
+    /// </summary>
+    public int? ClipGenerationOutputTokens { get; set; }
 }

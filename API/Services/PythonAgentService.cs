@@ -80,95 +80,132 @@ public class PythonAgentService : IPythonAgentService
             var tempDir = Path.Combine(Path.GetTempPath(), requestId);
             Directory.CreateDirectory(tempDir);
 
-            try
+            // Copy the input file to the temp directory to ensure all outputs are in the same location
+            var originalFileName = Path.GetFileName(filePath);
+            var tempInputPath = Path.Combine(tempDir, originalFileName);
+            File.Copy(filePath, tempInputPath, overwrite: true);
+            _logger.LogInformation("Copied input file to temp directory: {TempInputPath}", tempInputPath);
+
+            // Determine if this is a video file (for clip generation)
+            var isVideoFile = IsVideoFile(filePath);
+            _logger.LogInformation("File type: {FileType}", isVideoFile ? "Video" : "Audio");
+
+            // Run the Python agent
+            var result = await RunPythonAgentAsync(tempInputPath, tempDir, isVideoFile, cancellationToken);
+
+            // Read the results from the output files
+            var summaryJsonPath = Path.Combine(tempDir, "summary.json");
+            if (!File.Exists(summaryJsonPath))
             {
-                // Run the Python agent
-                var result = await RunPythonAgentAsync(filePath, tempDir, cancellationToken);
-
-                // Read the results from the output files
-                var summaryJsonPath = Path.Combine(tempDir, "summary.json");
-                if (!File.Exists(summaryJsonPath))
-                {
-                    throw new FileNotFoundException("Summary JSON file not found after processing");
-                }
-
-                var summaryJson = await File.ReadAllTextAsync(summaryJsonPath, cancellationToken);
-                var summaryData = JsonSerializer.Deserialize<JsonElement>(summaryJson);
-
-                // Extract summary and tags
-                var summary = summaryData.GetProperty("summary").GetString() ?? "";
-                var tags = new List<string>();
-                
-                if (summaryData.TryGetProperty("tags", out var tagsElement) && tagsElement.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var tag in tagsElement.EnumerateArray())
-                    {
-                        if (tag.GetString() is string tagStr)
-                        {
-                            tags.Add(tagStr);
-                        }
-                    }
-                }
-
-                // Extract waveform data if available
-                List<double>? waveformData = null;
-                if (summaryData.TryGetProperty("waveform_data", out var waveformElement) && waveformElement.ValueKind == JsonValueKind.Array)
-                {
-                    var waveform = new List<double>();
-                    foreach (var value in waveformElement.EnumerateArray())
-                    {
-                        if (value.ValueKind == JsonValueKind.Number)
-                        {
-                            waveform.Add(Math.Round(value.GetDouble(), 3));
-                        }
-                    }
-
-                    // Validate waveform data (should be exactly 480 values)
-                    if (waveform.Count == 480)
-                    {
-                        waveformData = waveform;
-                        _logger.LogInformation("Extracted waveform data: {Count} values", waveform.Count);
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Waveform data has unexpected count: {Count} (expected 480)", waveform.Count);
-                    }
-                }
-
-                // Extract token usage if available
-                var tokenBreakdown = ExtractTokenUsage(summaryData);
-                _tokenTrackingService.RecordTokenUsage(requestId, tokenBreakdown.SummarizationTokens, tokenBreakdown.TaggingTokens);
-
-                var totalTokens = tokenBreakdown.SummarizationTokens + tokenBreakdown.TaggingTokens;
-
-                var response = new SermonProcessResponse
-                {
-                    Id = requestId,
-                    Summary = summary,
-                    Tags = tags,
-                    WaveformData = waveformData,
-                    TotalTokensUsed = totalTokens,
-                    TokenBreakdown = tokenBreakdown,
-                    Status = "completed",
-                    ProcessedAt = DateTime.UtcNow,
-                    ProcessingDurationSeconds = (DateTime.UtcNow - startTime).TotalSeconds
-                };
-
-                _logger.LogInformation("Sermon processing completed successfully. Tokens used: {TotalTokens}", totalTokens);
-                return response;
+                throw new FileNotFoundException("Summary JSON file not found after processing");
             }
-            finally
+
+            var summaryJson = await File.ReadAllTextAsync(summaryJsonPath, cancellationToken);
+            var summaryData = JsonSerializer.Deserialize<JsonElement>(summaryJson);
+
+            // Extract summary and tags
+            var summary = summaryData.GetProperty("summary").GetString() ?? "";
+            var tags = new List<string>();
+
+            if (summaryData.TryGetProperty("tags", out var tagsElement) && tagsElement.ValueKind == JsonValueKind.Array)
             {
-                // Clean up temporary directory
+                foreach (var tag in tagsElement.EnumerateArray())
+                {
+                    if (tag.GetString() is string tagStr)
+                    {
+                        tags.Add(tagStr);
+                    }
+                }
+            }
+
+            // Extract waveform data if available
+            List<double>? waveformData = null;
+            if (summaryData.TryGetProperty("waveform_data", out var waveformElement) && waveformElement.ValueKind == JsonValueKind.Array)
+            {
+                var waveform = new List<double>();
+                foreach (var value in waveformElement.EnumerateArray())
+                {
+                    if (value.ValueKind == JsonValueKind.Number)
+                    {
+                        waveform.Add(Math.Round(value.GetDouble(), 3));
+                    }
+                }
+
+                // Validate waveform data (should be exactly 480 values)
+                if (waveform.Count == 480)
+                {
+                    waveformData = waveform;
+                    _logger.LogInformation("Extracted waveform data: {Count} values", waveform.Count);
+                }
+                else
+                {
+                    _logger.LogWarning("Waveform data has unexpected count: {Count} (expected 480)", waveform.Count);
+                }
+            }
+
+            // Extract token usage if available
+            var tokenBreakdown = ExtractTokenUsage(summaryData);
+            _tokenTrackingService.RecordTokenUsage(requestId, tokenBreakdown.SummarizationTokens, tokenBreakdown.TaggingTokens);
+
+            var totalTokens = tokenBreakdown.SummarizationTokens + tokenBreakdown.TaggingTokens;
+
+            // Check for video clip outputs (only for video files)
+            var (videoClipGenerated, videoClipFilename, videoClipMetadata) = await CheckForVideoClipOutputsAsync(tempDir, originalFileName, cancellationToken);
+
+            // Extract clip generation tokens from video clip metadata if available
+            if (videoClipGenerated && videoClipMetadata != null)
+            {
+                ExtractClipGenerationTokens(videoClipMetadata, tokenBreakdown);
+                totalTokens += tokenBreakdown.ClipGenerationTokens ?? 0;
+            }
+
+            // Construct full video clip path if video was generated
+            string? videoClipPath = null;
+            if (videoClipGenerated && !string.IsNullOrEmpty(videoClipFilename))
+            {
+                videoClipPath = Path.Combine(tempDir, videoClipFilename);
+                _logger.LogInformation("Video clip path: {VideoClipPath}", videoClipPath);
+            }
+
+            var response = new SermonProcessResponse
+            {
+                Id = requestId,
+                Summary = summary,
+                Tags = tags,
+                WaveformData = waveformData,
+                TotalTokensUsed = totalTokens,
+                TokenBreakdown = tokenBreakdown,
+                VideoClipGenerated = videoClipGenerated,
+                VideoClipFilename = videoClipFilename,
+                VideoClipPath = videoClipPath,
+                VideoClipMetadata = videoClipMetadata,
+                Status = "completed",
+                ProcessedAt = DateTime.UtcNow,
+                ProcessingDurationSeconds = (DateTime.UtcNow - startTime).TotalSeconds
+            };
+
+            _logger.LogInformation("Sermon processing completed successfully. Tokens used: {TotalTokens}, Video clip generated: {VideoClipGenerated}", totalTokens, videoClipGenerated);
+
+            // Only clean up temp directory if no video clip was generated
+            // If video clip exists, the SermonProcessingService will handle cleanup later
+            if (!videoClipGenerated)
+            {
                 try
                 {
                     Directory.Delete(tempDir, true);
+                    _logger.LogInformation("Cleaned up temporary directory (no video clip): {TempDir}", tempDir);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning("Failed to clean up temporary directory: {Error}", ex.Message);
                 }
             }
+            else
+            {
+                _logger.LogInformation("Preserving temporary directory for video clip: {TempDir}", tempDir);
+            }
+
+            return response;
         }
         catch (Exception ex)
         {
@@ -181,10 +218,10 @@ public class PythonAgentService : IPythonAgentService
                 ProcessedAt = DateTime.UtcNow,
                 ProcessingDurationSeconds = (DateTime.UtcNow - startTime).TotalSeconds
             };
-        }
+        }        
     }
 
-    private async Task<bool> RunPythonAgentAsync(string filePath, string outputDir, CancellationToken cancellationToken)
+    private async Task<bool> RunPythonAgentAsync(string filePath, string outputDir, bool enableClipGeneration, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Starting Python agent with executable: {PythonExecutable}", _pythonExecutablePath);
 
@@ -198,6 +235,9 @@ public class PythonAgentService : IPythonAgentService
             RedirectStandardError = true,
             CreateNoWindow = true
         };
+
+        // Set environment variable to enable/disable clip generation based on file type
+        processInfo.EnvironmentVariables["ENABLE_CLIP_GENERATION"] = enableClipGeneration.ToString().ToLower();
 
         using var process = Process.Start(processInfo);
         if (process == null)
@@ -256,6 +296,95 @@ public class PythonAgentService : IPythonAgentService
         }
 
         return breakdown;
+    }
+
+    private void ExtractClipGenerationTokens(object videoClipMetadata, TokenBreakdown tokenBreakdown)
+    {
+        try
+        {
+            // Convert metadata object to JsonElement for parsing
+            var metadataJson = JsonSerializer.Serialize(videoClipMetadata);
+            var metadataElement = JsonDocument.Parse(metadataJson).RootElement;
+
+            // Extract tokens from video clip metadata
+            if (metadataElement.TryGetProperty("tokens", out var tokensElement))
+            {
+                if (tokensElement.TryGetProperty("total", out var totalElement))
+                {
+                    tokenBreakdown.ClipGenerationTokens = totalElement.GetInt32();
+                }
+                if (tokensElement.TryGetProperty("input", out var inputElement))
+                {
+                    tokenBreakdown.ClipGenerationInputTokens = inputElement.GetInt32();
+                }
+                if (tokensElement.TryGetProperty("output", out var outputElement))
+                {
+                    tokenBreakdown.ClipGenerationOutputTokens = outputElement.GetInt32();
+                }
+
+                _logger.LogInformation("Extracted clip generation tokens: Total={Total}, Input={Input}, Output={Output}",
+                    tokenBreakdown.ClipGenerationTokens,
+                    tokenBreakdown.ClipGenerationInputTokens,
+                    tokenBreakdown.ClipGenerationOutputTokens);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to extract clip generation tokens from metadata");
+        }
+    }
+
+    private bool IsVideoFile(string filePath)
+    {
+        var videoExtensions = new[] { ".mp4", ".mov", ".avi", ".mkv", ".webm" };
+        var extension = Path.GetExtension(filePath).ToLower();
+        return videoExtensions.Contains(extension);
+    }
+
+    private async Task<(bool generated, string? filename, object? metadata)> CheckForVideoClipOutputsAsync(
+        string tempDir,
+        string originalFileName,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Construct expected video clip filename: {original_stem}_Summary.mp4
+            var originalStem = Path.GetFileNameWithoutExtension(originalFileName);
+            var videoClipFilename = $"{originalStem}_Summary.mp4";
+            var videoClipPath = Path.Combine(tempDir, videoClipFilename);
+
+            // Check if video clip was generated
+            if (!File.Exists(videoClipPath))
+            {
+                _logger.LogInformation("No video clip found at: {VideoClipPath}", videoClipPath);
+                return (false, null, null);
+            }
+
+            _logger.LogInformation("Video clip found: {VideoClipFilename}", videoClipFilename);
+
+            // Check for metadata JSON
+            var metadataFilename = $"{originalStem}_Summary_metadata.json";
+            var metadataPath = Path.Combine(tempDir, metadataFilename);
+
+            object? metadata = null;
+            if (File.Exists(metadataPath))
+            {
+                var metadataJson = await File.ReadAllTextAsync(metadataPath, cancellationToken);
+                metadata = JsonSerializer.Deserialize<JsonElement>(metadataJson);
+                _logger.LogInformation("Video clip metadata loaded from: {MetadataFilename}", metadataFilename);
+            }
+            else
+            {
+                _logger.LogWarning("Video clip metadata not found at: {MetadataPath}", metadataPath);
+            }
+
+            return (true, videoClipFilename, metadata);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking for video clip outputs");
+            return (false, null, null);
+        }
     }
 }
 

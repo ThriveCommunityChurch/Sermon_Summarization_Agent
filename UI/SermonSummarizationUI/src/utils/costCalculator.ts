@@ -31,11 +31,16 @@ export function calculateTotalCost(
   summarizationInput: number,
   summarizationOutput: number,
   taggingInput: number,
-  taggingOutput: number
+  taggingOutput: number,
+  clipGenerationInput?: number,
+  clipGenerationOutput?: number
 ): number {
   const summarizationCost = calculateCost(summarizationInput, summarizationOutput);
   const taggingCost = calculateCost(taggingInput, taggingOutput);
-  return summarizationCost + taggingCost;
+  const clipGenerationCost = (clipGenerationInput && clipGenerationOutput)
+    ? calculateCost(clipGenerationInput, clipGenerationOutput)
+    : 0;
+  return summarizationCost + taggingCost + clipGenerationCost;
 }
 
 /**
@@ -44,6 +49,7 @@ export function calculateTotalCost(
 export interface CostBreakdown {
   summarizationCost: number;
   taggingCost: number;
+  clipGenerationCost?: number;
   totalCost: number;
 }
 
@@ -51,15 +57,21 @@ export function getCostBreakdown(
   summarizationInput: number,
   summarizationOutput: number,
   taggingInput: number,
-  taggingOutput: number
+  taggingOutput: number,
+  clipGenerationInput?: number,
+  clipGenerationOutput?: number
 ): CostBreakdown {
   const summarizationCost = calculateCost(summarizationInput, summarizationOutput);
   const taggingCost = calculateCost(taggingInput, taggingOutput);
-  
+  const clipGenerationCost = (clipGenerationInput && clipGenerationOutput)
+    ? calculateCost(clipGenerationInput, clipGenerationOutput)
+    : undefined;
+
   return {
     summarizationCost,
     taggingCost,
-    totalCost: summarizationCost + taggingCost,
+    clipGenerationCost,
+    totalCost: summarizationCost + taggingCost + (clipGenerationCost || 0),
   };
 }
 

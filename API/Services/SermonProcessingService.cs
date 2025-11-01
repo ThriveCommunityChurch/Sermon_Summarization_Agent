@@ -52,7 +52,6 @@ public class SermonProcessingService : ISermonProcessingService
 
             // Save the uploaded file to a temporary location
             var tempFilePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + fileExtension);
-
             using (var stream = new FileStream(tempFilePath, FileMode.Create))
             {
                 await file.CopyToAsync(stream);

@@ -74,6 +74,8 @@ class TokenTracker:
         self.summarization_output_tokens = 0
         self.tagging_input_tokens = 0
         self.tagging_output_tokens = 0
+        self.clip_generation_input_tokens = 0
+        self.clip_generation_output_tokens = 0
 
     def add_transcription_tokens(self, count: int):
         """Add tokens used for transcription."""
@@ -89,11 +91,17 @@ class TokenTracker:
         self.tagging_input_tokens += input_count
         self.tagging_output_tokens += output_count
 
+    def add_clip_generation_tokens(self, input_count: int, output_count: int):
+        """Add tokens used for clip generation (input and output separately)."""
+        self.clip_generation_input_tokens += input_count
+        self.clip_generation_output_tokens += output_count
+
     def get_total_tokens(self) -> int:
         """Get total tokens used."""
         return (self.transcription_tokens +
                 self.summarization_input_tokens + self.summarization_output_tokens +
-                self.tagging_input_tokens + self.tagging_output_tokens)
+                self.tagging_input_tokens + self.tagging_output_tokens +
+                self.clip_generation_input_tokens + self.clip_generation_output_tokens)
 
     def get_breakdown(self) -> Dict[str, int]:
         """Get token usage breakdown."""
@@ -105,6 +113,9 @@ class TokenTracker:
             "tagging": self.tagging_input_tokens + self.tagging_output_tokens,
             "tagging_input": self.tagging_input_tokens,
             "tagging_output": self.tagging_output_tokens,
+            "clip_generation": self.clip_generation_input_tokens + self.clip_generation_output_tokens,
+            "clip_generation_input": self.clip_generation_input_tokens,
+            "clip_generation_output": self.clip_generation_output_tokens,
             "total": self.get_total_tokens()
         }
 
@@ -119,6 +130,9 @@ class TokenTracker:
                 "tagging": self.tagging_input_tokens + self.tagging_output_tokens,
                 "tagging_input": self.tagging_input_tokens,
                 "tagging_output": self.tagging_output_tokens,
+                "clip_generation": self.clip_generation_input_tokens + self.clip_generation_output_tokens,
+                "clip_generation_input": self.clip_generation_input_tokens,
+                "clip_generation_output": self.clip_generation_output_tokens,
                 "total": self.get_total_tokens()
             }
         }

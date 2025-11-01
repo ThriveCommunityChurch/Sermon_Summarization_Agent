@@ -5,6 +5,77 @@ export interface TokenBreakdown {
   taggingTokens: number;
   taggingInputTokens?: number;
   taggingOutputTokens?: number;
+  clipGenerationTokens?: number;
+  clipGenerationInputTokens?: number;
+  clipGenerationOutputTokens?: number;
+}
+
+export interface VideoClipMetadata {
+  version: string;
+  generated_at: string;
+  original_video: {
+    path: string;
+    duration_seconds: number;
+    file_size_mb: number;
+  };
+  output_video: {
+    path: string;
+    duration_seconds: number;
+    file_size_mb: number;
+    size_reduction_percent: number;
+  };
+  processing_stats: {
+    total_workflow_time_seconds: number;
+    ai_selection_time_seconds: number;
+    optimization_time_seconds: number;
+    ffmpeg_execution_time_seconds: number;
+    original_segment_count: number;
+    ai_selected_count: number;
+    final_segment_count: number;
+  };
+  configuration: {
+    max_clip_duration: number;
+    min_segment_length: number;
+    context_padding: number;
+    merge_gap_threshold: number;
+    enable_fade_transitions: boolean;
+    fade_duration: number;
+    gpu_encoding_enabled: boolean;
+    gpu_encoding_attempted: boolean;
+    gpu_fallback_occurred: boolean;
+    gpu_encoder_preset: string | null;
+  };
+  gpu_info: {
+    gpu_available: boolean;
+    ffmpeg_cuda_support: boolean;
+    encoding_method: string;
+    status: string;
+  };
+  segments: Array<{
+    index: number;
+    start_time: number;
+    end_time: number;
+    duration_seconds: number;
+    start_time_formatted: string;
+    end_time_formatted: string;
+    importance_score: number;
+    selection_reason: string;
+    text_preview: string;
+    full_text_length: number;
+  }>;
+  summary: {
+    total_segments: number;
+    total_duration_seconds: number;
+    total_duration_formatted: string;
+    average_segment_duration: number;
+    compression_ratio: number;
+    average_importance_score: number;
+  };
+  tokens: {
+    total: number;
+    input: number;
+    output: number;
+  };
 }
 
 export interface SermonProcessResponse {
@@ -14,6 +85,10 @@ export interface SermonProcessResponse {
   waveformData?: number[];
   totalTokensUsed: number;
   tokenBreakdown: TokenBreakdown;
+  videoClipGenerated?: boolean;
+  videoClipFilename?: string;
+  videoClipPath?: string;
+  videoClipMetadata?: VideoClipMetadata;
   status: string;
   error?: string;
   processedAt: string;
